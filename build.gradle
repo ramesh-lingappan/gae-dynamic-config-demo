@@ -1,0 +1,78 @@
+buildscript {
+    repositories {
+        mavenCentral()
+        jcenter()
+    }
+
+    dependencies {
+        classpath 'com.google.cloud.tools:appengine-gradle-plugin:+'
+    }
+}
+
+repositories {
+    mavenCentral()
+    jcenter()
+}
+
+apply plugin: "java"
+apply plugin: 'idea'
+apply plugin: 'war'
+apply plugin: 'com.google.cloud.tools.appengine-standard'  // App Engine tasks
+
+
+dependencies {
+    providedCompile 'javax.servlet:javax.servlet-api:3.1.0'
+    compile 'com.google.appengine:appengine-api-1.0-sdk:+'  // Latest App Engine Api's
+}
+
+// appengine versions for various environment
+def gaeVersions = [
+        stag: 5, alpha: 2, live: 3
+]
+
+ext.getDeployConfig = { ->
+
+    def mode = project.hasProperty('mode') ? project.property('mode') : "staging"
+    def deployConfig = [mode: mode]
+
+    if (mode == 'staging') {
+        deployConfig.gaeProjId = "stag-gae-app-id"
+        deployConfig.stopPreviousVersion = true
+        deployConfig.promote = true
+        deployConfig.version = gaeVersions.stag
+    }
+    else if (mode == 'alpha') {
+        deployConfig.gaeProjId = "alpha-gae-app-id"
+        deployConfig.stopPreviousVersion = true
+        deployConfig.promote = true
+        deployConfig.version = gaeVersions.alpha
+    }
+    else if (mode == 'live') {
+        deployConfig.gaeProjId = "live-gae-app-id"
+        deployConfig.stopPreviousVersion = false
+        deployConfig.promote = false
+        deployConfig.version = gaeVersions.live
+    } 
+    else {
+        throw new GradleException("invalid value for mode argument, must be one of [staging, alpha, live]")
+    }
+
+    return deployConfig
+}
+
+appengine {
+
+    deploy { // deploy configuration
+
+        def config = getDeployConfig()
+
+        projectId = config.gaeProjId
+        version = config.version
+        stopPreviousVersion = config.stopPreviousVersion  // default - stop the current version
+        promote = config.promote              // default - & make this the current version
+    }
+}
+
+appengineStage.doLast {
+    println getDeployConfig()
+}
