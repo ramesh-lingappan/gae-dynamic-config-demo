@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<datastore-indexes autoGenerate="true">
+
+    <datastore-index kind="Entity1" ancestor="false" source="manual">
+        <property name="prop1" direction="asc"/>
+        <property name="prop3" direction="asc"/>
+    </datastore-index>
+
+    <datastore-index kind="Entity2" ancestor="false" source="auto">
+        <property name="prop1" direction="asc"/>
+        <property name="prop2" direction="asc"/>
+    </datastore-index>
+
+</datastore-indexes>

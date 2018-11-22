@@ -9,6 +9,14 @@
     <sessions-enabled>true</sessions-enabled>
     <async-session-persistence enabled="true"/>
 
+    <instance-class>@INSTANCE_CLASS@</instance-class>
+    @SCALING_CONFIG@
+
+    <static-files>
+        <include path="static/**" expiration="10d"/>
+        <include path="dist/**" expiration="2d"/>
+    </static-files>
+
     <system-properties>
         <property name="java.util.logging.config.file" value="WEB-INF/classes/logging.properties"/>
     </system-properties>

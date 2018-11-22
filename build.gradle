@@ -1,3 +1,5 @@
+import org.apache.tools.ant.filters.ReplaceTokens
+
 buildscript {
     repositories {
         mavenCentral()
@@ -32,28 +34,25 @@ def gaeVersions = [
 
 ext.getDeployConfig = { ->
 
-    def mode = project.hasProperty('mode') ? project.property('mode') : "staging"
+    def mode = project.hasProperty('mode') ? project.property('mode') : "stag"
     def deployConfig = [mode: mode]
 
-    if (mode == 'staging') {
+    if (mode == 'stag') {
         deployConfig.gaeProjId = "stag-gae-app-id"
         deployConfig.stopPreviousVersion = true
         deployConfig.promote = true
         deployConfig.version = gaeVersions.stag
-    }
-    else if (mode == 'alpha') {
+    } else if (mode == 'alpha') {
         deployConfig.gaeProjId = "alpha-gae-app-id"
         deployConfig.stopPreviousVersion = true
         deployConfig.promote = true
         deployConfig.version = gaeVersions.alpha
-    }
-    else if (mode == 'live') {
+    } else if (mode == 'live') {
         deployConfig.gaeProjId = "live-gae-app-id"
         deployConfig.stopPreviousVersion = false
         deployConfig.promote = false
         deployConfig.version = gaeVersions.live
-    } 
-    else {
+    } else {
         throw new GradleException("invalid value for mode argument, must be one of [staging, alpha, live]")
     }
 
@@ -75,4 +74,60 @@ appengine {
 
 appengineStage.doLast {
     println getDeployConfig()
+}
+
+//copies appengine configuration files into build directory
+task copyGaeConfig(type: Copy) {
+
+    def configDir = "${project.projectDir}/gaeconfigs"
+    def targetDir = "${buildDir}/exploded-" + project.name + "/WEB-INF"
+    def envName = getDeployConfig().mode // live or stag etc
+
+    // copying general configurations
+    from configDir
+    include '*.xml'
+    into targetDir
+
+    // copying environment based configurations
+    from fileTree(configDir + "/" + envName)
+    include '*.xml'
+    into targetDir
+}
+
+explodeWar.finalizedBy copyGaeConfig
+
+// updates appengine-web.xml dynamic properties and copies to build directory
+ext.getGaeWebXmlConfig = {
+
+    def mode = getDeployConfig().mode
+
+    def instanceClass = 'F1'
+    def scalingConfig = '<automatic-scaling></automatic-scaling>'
+
+    if (mode == 'live' || mode == 'alpha') {
+        instanceClass = 'F2'
+        scalingConfig = ''' 
+            <automatic-scaling>
+                <max-concurrent-requests>30</max-concurrent-requests>
+                <min-idle-instances>1</min-idle-instances>
+                <max-instances>10</max-instances>
+                <min-pending-latency>1s</min-pending-latency>
+                <max-pending-latency>3s</max-pending-latency>
+            </automatic-scaling>
+        '''
+    }
+
+    def props = [
+            INSTANCE_CLASS: instanceClass,
+            SCALING_CONFIG: scalingConfig
+    ]
+    return props
+}
+
+explodeWar {
+    with copySpec {
+        from 'src/main/webapp/WEB-INF/appengine-web.xml'
+        into 'WEB-INF'
+        filter(ReplaceTokens, tokens: getGaeWebXmlConfig())
+    }
 }

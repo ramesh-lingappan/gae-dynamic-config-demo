@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<dispatch-entries>
+
+    <!--- Staging Dispatch File -->
+
+    <dispatch>
+        <url>*/api/*</url>
+        <module>api</module>
+    </dispatch>
+
+    <dispatch>
+        <url>domain.staging.com/*</url>
+        <module>default</module>
+    </dispatch>
+
+</dispatch-entries>

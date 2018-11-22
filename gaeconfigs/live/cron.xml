@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cronentries>
+
+    <cron>
+        <url>/tasks/process/data</url>
+        <description>Trigger data processing - every Monday</description>
+        <schedule>every monday 12:35</schedule>
+        <timezone>Asia/Kolkata</timezone>
+        <target>default</target>
+    </cron>
+
+</cronentries>
