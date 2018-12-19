@@ -35,23 +35,33 @@ def gaeVersions = [
 ext.getDeployConfig = { ->
 
     def mode = project.hasProperty('mode') ? project.property('mode') : "stag"
-    def deployConfig = [mode: mode]
+    def deployConfig = [mode: mode, envName: (isLive ? "live" : "stag")]
+
 
     if (mode == 'stag') {
         deployConfig.gaeProjId = "stag-gae-app-id"
         deployConfig.stopPreviousVersion = true
         deployConfig.promote = true
         deployConfig.version = gaeVersions.stag
+
+        deployConfig.kmsConfig = [projId: deployConfig.gaeProjId, keyring: "secrets-key-ring", key: "stag-secrets-enc-key"]
+
     } else if (mode == 'alpha') {
         deployConfig.gaeProjId = "alpha-gae-app-id"
         deployConfig.stopPreviousVersion = true
         deployConfig.promote = true
         deployConfig.version = gaeVersions.alpha
+
+        deployConfig.kmsConfig = [projId: deployConfig.gaeProjId, keyring: "secrets-key-ring", key: "alpha-secrets-enc-key"]
+
     } else if (mode == 'live') {
         deployConfig.gaeProjId = "live-gae-app-id"
         deployConfig.stopPreviousVersion = false
         deployConfig.promote = false
         deployConfig.version = gaeVersions.live
+
+        deployConfig.kmsConfig = [projId: deployConfig.gaeProjId, keyring: "secrets-key-ring", key: "live-secrets-enc-key"]
+
     } else {
         throw new GradleException("invalid value for mode argument, must be one of [staging, alpha, live]")
     }
@@ -129,5 +139,80 @@ explodeWar {
         from 'src/main/webapp/WEB-INF/appengine-web.xml'
         into 'WEB-INF'
         filter(ReplaceTokens, tokens: getGaeWebXmlConfig())
+    }
+}
+
+/* KMS Operations */
+
+task copyCredentials() {
+
+    doLast {
+        def taskNames = gradle.startParameter.getTaskNames()
+        def isDeployment = taskNames.contains("appengineDeploy") || taskNames.contains("appengineStage")
+
+        def deployConfig = getDeployConfig()
+        def classesPath = "${buildDir}/exploded-" + project.name + "/WEB-INF/classes"
+
+        /*
+        * For Local Run - we assumes you manually ran decryptSecrets task for local use, to avoid frequent decrypt request to Google KMS
+        * For Deployment - copy the latest encrypted files which will be decrypted at runtime in gae
+        * */
+        def srcFolderName = isDeployment ? "credentials-enc" : "credentials"
+
+        copy {
+            from "${rootProjDir}/${srcFolderName}"
+            include '*.*'
+            into classesPath
+
+            from "${rootProjDir}/${srcFolderName}/" + deployConfig.envName
+            include '*.*'
+            into classesPath
+        }
+    }
+}
+
+// attaching it to explodeWar to automate copying credentials
+explodeWar.finalizedBy copyCredentials
+
+
+/* Based on environment {envName}, credentials/{envName}/* are encrypted and stored under credentials-enc/{envName} folder */
+task encryptSecrets {
+
+    def deployConfig = getDeployConfig()
+
+    def config = deployConfig.kmsConfig
+    config.recursive = false
+
+    doLast {
+        // copy general credentials
+        config.srcPath = "${rootProjDir}/credentials"
+        config.targetPath = "${rootProjDir}/credentials-enc"
+        kmsEncryptSecrets(config)
+
+        // copy environment credentials
+        config.srcPath = "${rootProjDir}/credentials/" + deployConfig.envName
+        config.targetPath = "${rootProjDir}/credentials-enc/" + deployConfig.envName
+        kmsEncryptSecrets(config)
+    }
+}
+
+/* Based on environment {envName}, credentials-enc/{envName}/* are decrypted and stored under credentials/{envName} folder */
+task decryptSecrets {
+
+    def deployConfig = getDeployConfig()
+
+    def config = deployConfig.kmsConfig
+    config.recursive = false
+
+    doLast {
+        // decrypt general credentials
+        config.srcPath = "${rootProjDir}/credentials-enc"
+        config.targetPath = "${rootProjDir}/credentials"
+        kmsDecryptSecrets(config)
+
+        // copy environment credentials
+        config.srcPath = "${rootProjDir}/credentials-enc/" + deployConfig.envName
+        config.targetPath = "${rootProjDir}/credentials/" + deployConfig.envName
+        kmsDecryptSecrets(config)
     }
 }

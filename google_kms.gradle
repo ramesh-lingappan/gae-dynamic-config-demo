@@ -1,0 +1,87 @@
+/*
+* Helper methods to Encrypt & Decrypt credential files using Google Cloud KMS
+* https://cloud.google.com/kms/docs/quickstart#encrypt_data
+* */
+def kmsPerformCrypto = { projId, keyring, key, isEncrypt, rawFile, encFile ->
+
+    if (!projId)
+        throw new GradleException('invalid project id')
+
+    if (!keyring)
+        throw new GradleException('invalid key ring')
+
+    if (!key)
+        throw new GradleException('invalid key')
+
+    def cmd = isEncrypt == true ? "encrypt" : "decrypt"
+
+    if (cmd == 'encrypt') {
+        println rawFile + " => " + encFile
+    } else {
+        println encFile + " => " + rawFile
+    }
+
+    exec {
+        commandLine "gcloud", "kms", cmd,
+                "--location", "global",
+                "--keyring", keyring, "--key", key,
+                "--plaintext-file", rawFile,
+                "--ciphertext-file", encFile,
+                "--project", projId
+    }
+}
+
+def kmsOperation = { config, isEncrypt ->
+
+    if (!config || !config.srcPath)
+        throw new GradleException('invalid src path')
+
+    if (!config.targetPath)
+        throw new GradleException('invalid target path')
+
+    def srcFiles = file(config.srcPath)
+
+    if (!srcFiles.exists() || !srcFiles.directory) {
+        throw new GradleException('invalid src location ' + config.srcPath)
+    }
+
+    def targetDir = file(config.targetPath)
+    if (!targetDir.exists()) {
+        targetDir.mkdir()
+    }
+
+    fileTree(srcFiles).each { file ->
+
+        def targetFilePath = srcFiles.toURI().relativize(file.toURI()).toString()
+
+        def targetFile = targetDir.path + "/" + targetFilePath
+
+        if (isEncrypt)
+            targetFile += ".enc"
+        else
+            targetFile = targetFile.replace(".enc", "").trim()
+
+        if (file.isFile() && (config.recursive || file.parent == srcFiles.path)) {
+
+            def parentFile = new File(targetFile).parentFile
+            if (!parentFile.exists())
+                parentFile.mkdirs()
+
+            if (isEncrypt) {
+                kmsPerformCrypto(config.projId, config.keyring, config.key, true, file.path, targetFile)
+            } else {
+                kmsPerformCrypto(config.projId, config.keyring, config.key, false, targetFile, file.path)
+            }
+        }
+    }
+}
+
+// {projId:"", keyring:"", key:"", srcPath:"/credentials", targetPath: "/credentials-encrypted"}
+ext.kmsEncryptSecrets = { config ->
+    return kmsOperation(config, true)
+}
+
+// {projId:"", keyring:"", key:"", srcPath:"/credentials-encrypted", targetPath: "/credentials"}
+ext.kmsDecryptSecrets = { config ->
+    return kmsOperation(config, false)
+}
